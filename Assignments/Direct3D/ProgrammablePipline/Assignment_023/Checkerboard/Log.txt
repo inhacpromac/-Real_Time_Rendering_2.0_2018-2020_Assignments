@@ -1,0 +1,24 @@
+Log File Is Successfully Opened.
+D3D11CreateDeviceAndSwapChain() Succeeded.
+The Choosen Driver is of Hardware Type.
+The Supported Highest Feature Level is 11.0
+D3DCompile() Succeeded For Vertex Shader.
+ ID3D11Device::CreateVertexShader() Succeeded. 
+ D3DCompile() Succeeded For Pixel Shader.
+ ID3D11Device::CreatePixelShader() Succeeded.
+ ID3D11Device::CreateInputLayout() Succeeded.
+ID3D11Device::CreateBuffer() Succeeded For Vertex Position Buffer.
+ID3D11Device::CreateBuffer() Succeeded For Vertex Texture Buffer.
+ID3D11Device::CreateInputLayout() Succeeded For Constant Buffer.
+ID3D11Device::CreateRasterizerState() Succeeded For Culling.
+CreateTexture2D() Succeeded.
+CreateShaderResourceView() Succeeded.
+CheckerBoardTexture() Succeeded For  Texture.
+ ID3D11Device::CreateSamplerState() Succeeded For Texture.
+ID3D11Device::CreateRenderTargetView() Succeeded.With Width:800 and Height:600.
+ID3D11Device::CreateDepthStencilView() Succeeded.
+resize() Succeeded.
+initialize() Succeeded.
+uninitialize() Succeeded.
+Log File is Successfully Closed.
+ 

@@ -1,0 +1,4 @@
+Log File Successfully Created
+By Rohan
+Initialization Successful
+fclose Successful

@@ -1,0 +1,366 @@
+// Ref. Book - "Focus on 3D Model" Chapter 4
+// Exmple Models Teapot and Space plane, are Triangulated Modles.
+// Triangulated Using Blender
+
+struct Vector3
+{
+    float m_fVec[3];
+    Vector3(float *fVec)
+    {
+        memcpy(m_fVec, fVec, sizeof(float[3]));
+    }
+};
+
+struct Vector2
+{
+    float m_fVec[2];
+    Vector2(float *fVec)
+    {
+        memcpy(m_fVec, fVec, sizeof(float[2]));
+    }
+};
+
+struct SObjFace
+{
+    unsigned int m_uiVertIdx[3];
+    unsigned int m_uiTexCoordIdx[3];
+    unsigned int m_uiNormalIdx[3];
+
+    SObjFace(int *ipData)
+    {
+        // copy the data
+        m_uiVertIdx[0] = ipData[0]-1;
+		m_uiVertIdx[1] = ipData[1]-1;
+		m_uiVertIdx[2] = ipData[2]-1;
+
+		m_uiTexCoordIdx[0] = ipData[3]-1;
+		m_uiTexCoordIdx[1] = ipData[4]-1;
+		m_uiTexCoordIdx[2] = ipData[5]-1;
+
+		m_uiNormalIdx[0] = ipData[6]-1;
+		m_uiNormalIdx[1] = ipData[7]-1;
+		m_uiNormalIdx[2] = ipData[8]-1;
+    }
+};
+
+std::vector<Vector3>  m_vVertices;
+std::vector<Vector3>  m_vNormals;
+std::vector<Vector2>  m_vTexCoords;
+std::vector<SObjFace> m_vFaces;
+
+std::vector<vmath::vec3>  vertices;
+std::vector<vmath::vec2>  texcoords;
+std::vector<vmath::vec3>  normals;
+std::vector<unsigned int> indices;
+
+//Pointer to objects to cut down on operator[] use with std::vector
+Vector3  *m_pVerts;
+Vector3  *m_pNormals;
+Vector2  *m_pTexCoords;
+SObjFace *m_pFaces;
+
+int iNumFaces;
+
+bool LoadObj(const char*szFilename)
+{
+    void PrintDataLog(void);
+    void FillTheVertexBuffers(void);
+    void objPrepareToDraw(void);
+    void cleanUpData(void);
+
+    char cLine[256]; // aline of the obj file
+    
+    bool m_bHasTexCoords;
+    bool m_bHasNormals;
+
+    // open up the file
+    FILE *fp = fopen(szFilename, "rt");
+    if (!fp)
+    {
+        fprintf(gpFile, "Could Not Open Obj File.Exitting Now...\n");
+        return false;
+    }
+
+    // read until we hit the end of file 
+    while (!feof(fp))
+    {
+        // check the first char in the line
+        int iStart = fgetc(fp);
+
+        // if the first letter is v, it is either a vertex, a tex coord or a normal
+        if (iStart == 'v')
+        {
+            // get the second char
+            int iNext = fgetc(fp);
+            float fTemp[3];
+
+            // if its a space, its a vertex coordinate
+            if (iNext == ' ' || iNext == '\t')
+            {
+                // get the line
+                fgets(cLine, 256, fp);
+                // get the vertex coords
+                sscanf(cLine, " %f %f %f", &fTemp[0], &fTemp[1], &fTemp[2]);
+                // add to the vertex array
+                m_vVertices.push_back(fTemp);
+            }
+            // if its a t, its a texture coord
+            else if (iNext == 't')
+            {
+                // get the line
+                fgets(cLine, 256, fp);
+                // get the vertex coords
+                sscanf(cLine, " %f %f", &fTemp[0], &fTemp[1]);
+                // add to the vertex array
+                m_vTexCoords.push_back(fTemp);
+                m_bHasTexCoords = true;
+            }
+            // if its a normal
+            else if(iNext == 'n')
+            {
+                // get the line
+                fgets(cLine, 256, fp);
+                // get the vertex coords
+                sscanf(cLine, " %f %f %f", &fTemp[0], &fTemp[1], &fTemp[2]);
+                // add to the vertex array
+                m_vNormals.push_back(fTemp);
+                m_bHasNormals = true;
+            }
+            // not supported
+            else
+            {
+                // scan the line and discard it
+                fgets(cLine, 256, fp);
+            }
+        }
+        // if the first letter is f, its a face
+        else if (iStart == 'f')
+        {
+            // temp buffer ro hold vertex indices
+            int iTemp[3][3];
+            memset(iTemp, 0, 36);
+            // read in the line
+            fgets(cLine, 256, fp);
+
+            // if it has texture coords AND vertex normals
+            if (m_bHasTexCoords && m_bHasNormals)
+            {
+                //extract the face info
+				sscanf(cLine, " %i/%i/%i %i/%i/%i %i/%i/%i", &iTemp[0][0], &iTemp[1][0], &iTemp[2][0], 
+															 &iTemp[0][1], &iTemp[1][1], &iTemp[2][1],
+															 &iTemp[0][2], &iTemp[1][2], &iTemp[2][2]);
+                // store the info in the faces structure
+                m_vFaces.push_back(&iTemp[0][0]);
+            }
+			//Just has tex coords
+			else if(m_bHasTexCoords && !m_bHasNormals)
+			{
+				//extract the face info
+				sscanf(cLine, " %i/%i %i/%i %i/%i", &iTemp[0][0], &iTemp[1][0], 
+													&iTemp[0][1], &iTemp[1][1], 
+													&iTemp[0][2], &iTemp[1][2]);
+				
+				//store the info in the faces structure
+				m_vFaces.push_back(&iTemp[0][0]);
+			}
+			//just normals
+			else if(!m_bHasTexCoords && m_bHasNormals)
+			{
+				sscanf(cLine, " %i//%i %i//%i %i//%i", &iTemp[0][0], &iTemp[2][0], 
+													   &iTemp[0][1], &iTemp[2][1], 
+													   &iTemp[0][2], &iTemp[2][2]);
+				//store the info in the faces structure
+				m_vFaces.push_back(&iTemp[0][0]);
+
+			}
+            //Just vertices
+			else
+			{
+				//extract the face info
+				sscanf(cLine, " %i ", &iTemp[0][0], &iTemp[1][0], &iTemp[2][0]);
+				//store the info in the faces structure
+				m_vFaces.push_back(&iTemp[0][0]);
+
+			}			
+			
+		}
+		//if it isn't any of those, we don't care about it
+		else
+		{
+			//read the whole line to advance
+			fgets(cLine, 256, fp);
+		}
+    }
+
+    m_pVerts     = &m_vVertices[0];
+    m_pTexCoords = &m_vTexCoords[0];
+    m_pNormals   = &m_vNormals[0];
+    m_pFaces     = &m_vFaces[0];
+
+    iNumFaces = m_vFaces.size();
+
+    //PrintDataLog();
+    FillTheVertexBuffers();
+    objPrepareToDraw();
+    cleanUpData();
+
+    fclose(fp);
+
+    return true;
+}
+
+void objPrepareToDraw(void)
+{
+    // create Vao //
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+	// position
+	glGenBuffers(1, &vbo_position);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_position);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vector3), (const void*)&vertices[0], GL_STATIC_DRAW);
+	glVertexAttribPointer(AMC_ATTRIBUTE_POSITION, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(AMC_ATTRIBUTE_POSITION);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	// normal
+	glGenBuffers(1, &vbo_normal);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_normal);
+	glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(Vector3), (const void*)&normals[0], GL_STATIC_DRAW);
+	glVertexAttribPointer(AMC_ATTRIBUTE_NORMALS, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(AMC_ATTRIBUTE_NORMALS);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	// texture
+	glGenBuffers(1, &vbo_texture);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_texture);
+	glBufferData(GL_ARRAY_BUFFER, texcoords.size() * sizeof(Vector2), (const void*)&texcoords[0], GL_STATIC_DRAW);
+	glVertexAttribPointer(AMC_ATTRIBUTE_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(AMC_ATTRIBUTE_TEXCOORD0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	// indices
+	glGenBuffers(1, &vbo_element);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbo_element);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), (const GLvoid *)&indices[0], GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+}
+
+// clear allocated memory
+void cleanUpData(void)
+{    
+    m_pVerts     = NULL;
+    m_pTexCoords = NULL;
+    m_pNormals   = NULL;
+    m_pFaces     = NULL;
+
+    vertices.clear();
+    normals.clear();
+    texcoords.clear();
+    indices.clear();
+
+    m_vVertices.clear();
+    m_vTexCoords.clear();
+    m_vNormals.clear();
+    m_vFaces.clear();
+}
+
+
+// NOTE : ob file does not have texture vt coordinates. Comment following texture code
+void FillTheVertexBuffers(void)
+{
+    for (int i = 0, k = 0; i < iNumFaces; i++)
+    {
+        // Point 1
+        vec3 vertex1;
+        vertex1[0] = m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[0];
+        vertex1[1] = m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[1];
+        vertex1[2] = m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[2];
+        vertices.push_back(vertex1);
+        indices.push_back(k++);
+        vec2 tex1;
+        tex1[0]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[0])].m_fVec[0];
+        tex1[1]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[0])].m_fVec[1];
+        texcoords.push_back(tex1);
+        indices.push_back(k++);
+        vec3 normal1;
+        normal1[0] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[0];
+        normal1[1] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[1];
+        normal1[2] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[2];
+        normals.push_back(normal1);
+        indices.push_back(k++);
+        
+        // Point 2
+        vec3 vertex2;
+        vertex2[0] = m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[0];
+        vertex2[1] = m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[1];
+        vertex2[2] = m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[2];
+        vertices.push_back(vertex2);
+        indices.push_back(k++);
+        vec2 tex2;
+        tex2[0]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[1])].m_fVec[0];
+        tex2[1]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[1])].m_fVec[1];
+        texcoords.push_back(tex2);
+        indices.push_back(k++);      
+        vec3 normal2;
+        normal2[0] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[0];
+        normal2[1] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[1];
+        normal2[2] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[2];
+        normals.push_back(normal2);
+        indices.push_back(k++);
+
+        // Point 3
+        vec3 vertex3;
+        vertex3[0] = m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[0];
+        vertex3[1] = m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[1];
+        vertex3[2] = m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[2];
+        vertices.push_back(vertex3);
+        indices.push_back(k++);
+        vec2 tex3;
+        tex3[0]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[2])].m_fVec[0];
+        tex3[1]    = m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[2])].m_fVec[1];
+        texcoords.push_back(tex3);
+        indices.push_back(k++);
+        vec3 normal3;
+        normal3[0] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[0];
+        normal3[1] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[1];
+        normal3[2] = m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[2];
+        normals.push_back(normal3);
+        indices.push_back(k++);
+    }
+}
+
+void PrintDataLog(void)
+{
+    FILE *log = fopen("ParseObjData.txt", "w");
+
+    fprintf(log, ".obj File Data Details\n");
+    fprintf(log, "---------------------------------------------------------------------------------\n");
+    fprintf(log, "Total Number Of Triangles  : %d\n", m_vFaces.size());
+    fprintf(log, "Total Number Of Vertices   : %d\n", m_vVertices.size());
+    fprintf(log, "Total Number Of Texcoords  : %d\n", m_vTexCoords.size());
+    fprintf(log, "Total Number Of Normals    : %d\n", m_vNormals.size());
+    fprintf(log, "Total Number Of Indices    : %d\n", iNumFaces * 9); // 9 indices per face
+    fprintf(log, "---------------------------------------------------------------------------------\n");
+    fprintf(log, "---------------------------------------------------------------------------------\n");
+    fprintf(log, "Faces Data As Follows\n", m_vFaces.size());
+    fprintf(log, "---------------------------------------------------------------------------------\n");
+    for (int i = 0; i < iNumFaces; i++)
+    {
+        
+        fprintf(log, "Face %d\n", i+1);
+        fprintf(log, "Point P1\n");
+        fprintf(log, "Index %d  Vertices     %f %f %f\n", (m_pFaces[i].m_uiVertIdx[0])+1,     m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[0],         m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[1],            m_pVerts[(m_pFaces[i].m_uiVertIdx[0])].m_fVec[2]);
+        fprintf(log, "Index %d  Texcoords    %f %f\n",    (m_pFaces[i].m_uiTexCoordIdx[0])+1, m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[0])].m_fVec[0], m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[0])].m_fVec[1]);
+        fprintf(log, "Index %d  Normals      %f %f %f\n", (m_pFaces[i].m_uiNormalIdx[0])+1,   m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[0],     m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[1],        m_pNormals[(m_pFaces[i].m_uiNormalIdx[0])].m_fVec[2]);
+        fprintf(log, "Point P2\n");
+        fprintf(log, "Index %d  Vertices     %f %f %f\n", (m_pFaces[i].m_uiVertIdx[1])+1,     m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[0],         m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[1],            m_pVerts[(m_pFaces[i].m_uiVertIdx[1])].m_fVec[2]);
+        fprintf(log, "Index %d  Texcoords    %f %f\n",    (m_pFaces[i].m_uiTexCoordIdx[1])+1, m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[1])].m_fVec[0], m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[1])].m_fVec[1]);
+        fprintf(log, "Index %d  Normals      %f %f %f\n", (m_pFaces[i].m_uiNormalIdx[1])+1,   m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[0],     m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[1],        m_pNormals[(m_pFaces[i].m_uiNormalIdx[1])].m_fVec[2]);
+        fprintf(log, "Point P3\n");
+        fprintf(log, "Index %d  Vertices     %f %f %f\n", (m_pFaces[i].m_uiVertIdx[2])+1,     m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[0],         m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[1],            m_pVerts[(m_pFaces[i].m_uiVertIdx[2])].m_fVec[2]);
+        fprintf(log, "Index %d  Texcoords    %f %f\n",    (m_pFaces[i].m_uiTexCoordIdx[2])+1, m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[2])].m_fVec[0], m_pTexCoords[(m_pFaces[i].m_uiTexCoordIdx[2])].m_fVec[1]);
+        fprintf(log, "Index %d  Normals      %f %f %f\n", (m_pFaces[i].m_uiNormalIdx[2])+1,   m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[0],     m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[1],        m_pNormals[(m_pFaces[i].m_uiNormalIdx[2])].m_fVec[2]);
+        fprintf(log, "\n");
+    }
+    fprintf(log, "---------------------------------------------------------------------------------\n");
+    fclose(log);
+}

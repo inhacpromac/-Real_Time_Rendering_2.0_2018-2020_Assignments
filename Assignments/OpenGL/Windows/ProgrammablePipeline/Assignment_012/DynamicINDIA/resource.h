@@ -1,0 +1,1 @@
+#define IDBITMAP_PLANE 101

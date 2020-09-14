@@ -1,0 +1,1 @@
+This Application is about base blue window in Direct3D.

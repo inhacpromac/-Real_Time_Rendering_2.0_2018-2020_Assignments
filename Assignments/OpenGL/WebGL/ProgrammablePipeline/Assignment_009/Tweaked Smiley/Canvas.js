@@ -1,0 +1,415 @@
+// global variables
+var canvas=null;
+var gl=null; // webgl context
+var bFullscreen=false;
+var canvas_original_width;
+var canvas_original_height;
+
+const WebGLMacros = 
+// when whole 'WebGLMacros' is 'const', all inside it are automatically 'const'
+{
+	AMC_ATTRIBUTE_VERTEX:0,
+	AMC_ATTRIBUTE_COLOR:1,
+	AMC_ATTRIBUTE_NORMAL:2,
+	AMC_ATTRIBUTE_TEXTURE0:3,
+};
+
+var vertexShaderObject;
+var fragmentShaderObject;
+var shaderProgramObject;
+
+var vao;
+var vbo_position;
+var vbo_texture;
+var mvpUniform;
+
+var Texture_Smiley;
+var samplerUniform;
+var passedDigit = 0;
+
+
+var perspectiveProjectionMatrix;
+
+// To start animation : To have requestAnimationFrame() to be called "cross-browser" compatible
+var requestAnimationFrame = 
+	window.requestAnimationFrame || 
+	window.webkitRequestAnimationFrame || 
+	window.mozRequestAnimationFrame || 
+	window.oRequestAnimationFrame || 
+	window.msRequestAnimationFrame;
+
+// To stop animation : To have cancelAnimationFrame() to be called "cross-browser" compatible
+var cancelAnimationFrame = 
+	window.cancelAnimationFrame || 
+	window.webkitCancelRequestAnimationFrame || 
+	window.webkitCancelAnimationFrame || 
+	window.mozCancelRequestAnimationFrame || 
+	window.mozCancelAnimationFrame || 
+	window.oCancelRequestAnimationFrame || 
+	window.oCancelAnimationFrame || 
+	window.msCancelRequestAnimationFrame || 
+	window.msCancelAnimationFrame;
+
+// onload function
+function main()
+{
+	// get <canvas> element
+	canvas = document.getElementById("AMC");
+	if(!canvas)
+		console.log("Obtaining Canvas Failed\n");
+	else
+		console.log("Obtaining Canvas Succeeded\n");
+	canvas_original_width=canvas.width;
+	canvas_original_height=canvas.height;
+	
+	// register keyboard's keydown event handler
+	window.addEventListener("keydown", keyDown, false);
+	window.addEventListener("click", mouseDown, false);
+	window.addEventListener("resize", resize, false);
+	
+	// initialize WebGL
+	init();
+	
+	// start drawing here as warming-up
+	resize();
+	draw();
+}
+
+function toggleFullScreen()
+{
+	// code
+	var fullscreen_element = 
+		document.fullscreenElement || 
+		document.webkitFullscreenElement || 
+		document.mozFullScreenElement || 
+		document.msFullscreenElement || 
+		null;
+		
+	// if not fullscreen
+	if(fullscreen_element == null)
+	{
+		if(canvas.requestFullscreen)
+			canvas.requestFullscreen();
+		else if(canvas.mozRequestFullScreen)
+			canvas.mozRequestFullScreen();
+		else if(canvas.webkitRequestFullscreen)
+			canvas.webkitRequestFullscreen();
+		else if(canvas.msRequestFullscreen)
+			canvas.msRequestFullscreen();
+		bFullscreen=true;
+	}
+	else // if already fullscreen
+	{
+		if(document.exitFullscreen)
+			document.exitFullscreen();
+		else if(document.mozCancelFullScreen)
+			document.mozCancelFullScreen();
+		else if(document.webkitExitFullscreen)
+			document.webkitExitFullscreen();
+		else if(document.msExitFullscreen)
+			document.msExitFullscreen();
+		bFullscreen=false;
+	}
+}
+
+function init()
+{
+	// code
+	// get WebGL 2.0 context
+	gl=canvas.getContext("webgl2");
+	if(gl==null) // failed to get context
+	{
+		console.log("Failed to get the rendering context for WebGL");
+		return;
+	}
+	gl.viewportwidth = canvas.width;
+	gl.viewportHeight = canvas.height;
+	
+	// vertex shader
+	var vertexShaderSourceCode =
+		"#version 300 es"+
+		"\n"+
+		"in vec4 vPosition;" +
+		"in vec2 vTexCoord;" +
+		"uniform mat4 u_mvp_matrix;" +
+		"out vec2 out_texcoord;" +
+		"void main(void)" +
+		"{" +
+		"   gl_Position = u_mvp_matrix * vPosition;" +
+		"	out_texcoord = vTexCoord;" +
+		"}";
+	vertexShaderObject=gl.createShader(gl.VERTEX_SHADER);
+	gl.shaderSource(vertexShaderObject,vertexShaderSourceCode);
+	gl.compileShader(vertexShaderObject);
+	if(gl.getShaderParameter(vertexShaderObject,gl.COMPILE_STATUS)==false)
+	{
+		var error=gl.getShaderInfoLog(vertexShaderObject);
+		if(error.length > 0)
+		{
+			alert(error);
+			uninitialize( );
+		}
+	}
+	
+	// fragment shader
+	var fragmentShaderSourceCode =
+		"#version 300 es"+
+		"\n"+
+		"precision highp float;" +
+		"in vec2 out_texcoord;" +
+		"uniform sampler2D u_sampler;" +
+		"out vec4 FragColor;" +
+		"void main(void)" +
+		"{" +
+		"	FragColor = texture(u_sampler, out_texcoord);" +
+		"}";
+	fragmentShaderObject=gl.createShader(gl.FRAGMENT_SHADER);
+	gl.shaderSource(fragmentShaderObject,fragmentShaderSourceCode);
+	gl.compileShader(fragmentShaderObject);
+	if(gl.getShaderParameter(fragmentShaderObject,gl.COMPILE_STATUS)==false)
+	{
+		var error=gl.getShaderInfoLog(fragmentShaderObject);
+		if(error.length > 0)
+		{
+			alert(error);
+			uninitialize();
+		}
+	}
+	
+	// shader program
+	shaderProgramObject=gl.createProgram();
+	gl.attachShader(shaderProgramObject,vertexShaderObject);
+	gl.attachShader(shaderProgramObject,fragmentShaderObject);
+	
+	// pre-link binding of shader program object with vertex shader attributes
+	gl.bindAttribLocation(shaderProgramObject,WebGLMacros.AMC_ATTRIBUTE_VERTEX,"vPosition");
+	gl.bindAttribLocation(shaderProgramObject,WebGLMacros.AMC_ATTRIBUTE_TEXTURE0, "vTexCoord");
+	
+	// linking
+	gl.linkProgram(shaderProgramObject);
+	if (!gl.getProgramParameter(shaderProgramObject, gl.LINK_STATUS))
+	{
+		var error=gl.getProgramInfoLog(shaderProgramObject); 
+		if(error.length > 0) 
+		{
+			alert(error); 
+			uninitialize();
+		}
+	}
+
+	// Load Textures
+	Texture_Smiley = gl.createTexture();
+	Texture_Smiley.image = new Image();
+	Texture_Smiley.image.src = "smiley.png";
+	Texture_Smiley.image.onload = function ()
+	{
+		gl.bindTexture(gl.TEXTURE_2D, Texture_Smiley);
+		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, Texture_Smiley.image);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.bindTexture(gl.TEXTURE_2D, null);
+	}
+	
+	// get MVP uniform location
+	mvpUniform=gl.getUniformLocation(shaderProgramObject,"u_mvp_matrix");
+	samplerUniform=gl.getUniformLocation(shaderProgramObject, "u_sampler");
+	
+	// *** vertices, colors, shader attribs, vbo, vao initializations ***
+	var rectangleVertices = new Float32Array([1.0, 1.0,
+											1.0, -1.0,
+											-1.0, -1.0,
+											-1.0, 1.0
+											]);
+	vao = gl.createVertexArray();
+	gl.bindVertexArray(vao);
+	
+	vbo_position = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER,vbo_position);
+	gl.bufferData(gl.ARRAY_BUFFER,rectangleVertices,gl.STATIC_DRAW);
+	gl.vertexAttribPointer(WebGLMacros.AMC_ATTRIBUTE_VERTEX, 
+		2,
+		gl.FLOAT, 
+		false, 
+		0, 
+		0);
+	gl.enableVertexAttribArray(WebGLMacros.AMC_ATTRIBUTE_VERTEX);
+	gl.bindBuffer(gl.ARRAY_BUFFER,null);
+	vbo_texture = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER,vbo_texture);
+	gl.bufferData(gl.ARRAY_BUFFER,[],gl.DYNAMIC_DRAW);
+	gl.vertexAttribPointer(WebGLMacros.AMC_ATTRIBUTE_TEXTURE0, 
+		2,
+		gl.FLOAT, 
+		false, 
+		0, 
+		0);
+	gl.enableVertexAttribArray(WebGLMacros.AMC_ATTRIBUTE_TEXTURE0);
+	gl.bindBuffer(gl.ARRAY_BUFFER,null);
+	gl.bindVertexArray(null);
+	
+	// set clear color
+	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+	
+	// initialize projection matrix
+	perspectiveProjectionMatrix=mat4.create();
+}
+
+function resize()
+{
+	// code
+	if(bFullscreen==true)
+	{
+		canvas.width=window.innerWidth;
+		canvas.height=window.innerHeight;
+	}
+	else
+	{
+		canvas.width=canvas_original_width;
+		canvas.height=canvas_original_height;
+	}
+	
+	// set the viewport to match
+	gl.viewport(0, 0, canvas.width, canvas.height);
+	
+	mat4.perspective(perspectiveProjectionMatrix, 
+						45.0, 
+						parseFloat(canvas.width)/ parseFloat(canvas.height), 
+						0.1, 
+						100.0);
+}
+
+function draw()
+{
+	// code
+	gl.clear(gl.COLOR_BUFFER_BIT);
+	
+	gl.useProgram(shaderProgramObject);
+	
+	var modelViewMatrix=mat4.create(); //initialize as identity matrix
+	var modelViewProjectionMatrix = mat4.create();
+	
+	mat4.translate(modelViewMatrix, modelViewMatrix, [0.0 ,0.0 ,-5.0]); 
+	
+	mat4.multiply(modelViewProjectionMatrix, perspectiveProjectionMatrix, modelViewMatrix); 
+	
+	gl.uniformMatrix4fv(mvpUniform, false, modelViewProjectionMatrix);
+
+	
+		
+	gl.bindVertexArray(vao);
+
+	var rectangleTexture = null;
+
+	if(passedDigit == 1) {
+        rectangleTexture = new Float32Array([0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.5, 0.5]);
+    }
+    else if(passedDigit == 2) {
+        rectangleTexture = new Float32Array([0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0]);
+    }
+    else if(passedDigit == 3) {
+        rectangleTexture = new Float32Array([0.0, 2.0, 0.0, 0.0, 2.0, 0.0, 2.0, 2.0]);
+    }
+    else if(passedDigit == 4) {
+        rectangleTexture = new Float32Array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
+    }
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, vbo_texture);
+	gl.bufferData(gl.ARRAY_BUFFER, rectangleTexture, gl.DYNAMIC_DRAW);
+	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+	// bind with texture
+	gl.bindTexture(gl.TEXTURE_2D, Texture_Smiley);
+	gl.uniform1i(samplerUniform, 0);
+	
+	gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+	
+	gl.bindVertexArray(null);
+	
+	gl.useProgram(null);
+	
+	// animation loop
+	requestAnimationFrame(draw, canvas);
+}
+
+function uninitialize()
+{
+	// code
+	if(vao)
+	{
+		gl.deleteVertexArray(vao);
+		vao=null;
+	}
+	
+	if(vbo_position)
+	{
+		gl.deleteBuffer(vbo_position);
+		vbo_position=null;
+	}
+
+	if(vbo_texture)
+	{
+		gl.deleteBuffer(vbo_texture);
+		vbo_texture=null;
+	}
+	
+	if(shaderProgramObject)
+	{
+		if(fragmentShaderObject)
+		{
+			gl.detachShader(shaderProgramObject,fragmentShaderObject);
+			gl.deleteShader(fragmentShaderObject);
+			fragmentShaderObject=null;
+		}
+		
+		if(vertexShaderObject)
+		{
+			gl.detachShader(shaderProgramObject,vertexShaderObject);
+			gl.deleteShader(vertexShaderObject);
+			vertexShaderObject=null;
+		}
+		
+		gl.deleteProgram(shaderProgramObject);
+		shaderProgramObject=null;
+	}
+}
+
+function keyDown(event)
+{
+	// code
+	switch(event.keyCode)
+	{
+		case 27: // Escape
+			// uninitialize
+			uninitialize();
+			// close our application's tab
+			window.close(); // may not work in Firefox but works in Safari and chrome
+			break;
+		case 70: // for 'F' or ' f '
+			toggleFullScreen();
+			break;
+	}
+	switch(event.key)
+	{
+		case "0":
+			passedDigit = 0;
+			break;
+		case "1":
+			passedDigit = 1;
+			break;
+		case "2":
+			passedDigit = 2;
+			break;
+		case "3":
+			passedDigit = 3;
+			break;
+		case "4":
+			passedDigit = 4;
+			break;
+	}
+}
+
+function mouseDown()
+{
+	// code
+}
