@@ -14,4 +14,5 @@ RTR 2018-20 Assignments :
 12. Render to Texture
 13. Shaders - Tesselation Shader, Geometry Shader
 
-Watch project video at (1:53:02 / 4:22:00) : https://www.youtube.com/watch?v=MSu8sdoB_aQ&t=7441s
+Watch OpenGL project video at (1:53:02 / 4:22:00) : https://www.youtube.com/watch?v=MSu8sdoB_aQ&t=7441s
+Watch WebGL project video at : https://www.youtube.com/watch?v=XEfDzQUNs-A
